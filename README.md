@@ -1,11 +1,11 @@
 # iot_simulator
 This is a project to simulate the insertion of data points in Couchbase from a certain number of sensors with a configurable frequency.
-Data is then prepared with eventing to be queried using timeseries.
+Data is prepared in the correct format directly by the sensors, which use subdocument api appending.
 
 use it with
 
 ```
-docker run marcobevilacqua94/iot_simulator:latest java -jar iot_simulator.jar -h (host) -u (username) -p (password) -b (bucket-name) -s (scope-name) -c (collection-name) -se (sensors) -mt (max-seconds) -ips (inserts-per-second) -ttl (time-to-live)
+docker run marcobevilacqua94/iot_simulator_sdk:latest java -jar iot_simulator_sdk.jar -h (host) -u (username) -p (password) -b (bucket-name) -s (scope-name) -c (collection-name) -se (sensors) -mt (max-seconds) -ips (inserts-per-second) -ms (millis-span)
 ```
 
 inserts-per-second are referred to single sensor
@@ -22,57 +22,23 @@ collection-name: source
 sensors: 5
 max-time: 0 (infinte)
 inserts-per-second: 5
-time-to-live: 60
+millis-span: 60000
 ```
 To run Couchbase Server 7.2.0 run this 
 ```
 docker run -d --name db1 -p 8091-8096:8091-8096 -p 11210-11211:11210-11211 couchbase:7.2.0
 ```
-Create "sample" bucket, create required collections, in the _default scope, collection "source" (where sensors write), collection "metadata" (for eventing storage), collection "target" (for timeseries final data).
-The collection were the sensors write ("source") is supposed to have a short time to live (to save space).
-Then create the eventing function, listening on "source", with storage in "metadata" and with alias "tgt" pointing to "target" collection.
-This function aggregates data from the same sensor in the same 60 seconds window (-> ```Math.trunc(doc.timestamp / 60000)```).
-tgt is the collection where you want to aggregate the data. The function must listen to where the sensors write.
-Use a From Now on policy. Use ts_interval and add only the temperature to the array of values (not the array couple temperature + timestamp) if you want to use regular intervals.
-To aggregate data with and eventing function and use timeseries feature of couchbase, **build an eventing function like this one**
+Create "sample" bucket, create required collection, collection "target".
+The sensors write in "target".
+The sensors aggregate data from the same sensor in the same millis_span seconds window.
 
-```
-function OnUpdate(doc, meta) {
-    log("New data insertion", meta.id)
-    var id = doc.sensor + ":" + Math.trunc(doc.timestamp / 60000)
-    if(tgt[id]){
-        var agg = tgt[id]
-        
-        if(doc.timestamp > agg.ts_end){
-            agg.ts_end = doc.timestamp
-        } else if(doc.timestamp < agg.ts_start){
-            agg.ts_start = doc.timestamp
-        }
-        
-        agg.ts_data.push([doc.timestamp, doc.temperature])
-        
-        tgt[id] = agg
-
-        
-    } else {
-        tgt[id] = {
-            "ts_start" : doc.timestamp,
-            "ts_end" : doc.timestamp,
-            // "ts_interval" : 10,
-            "device" : doc.sensor,
-            "ts_data" : [[doc.timestamp, doc.temperature]]
-        }
-    }
-}
-```
-
-Now if you have a version of Couchbase which supports timeseries, **create this index** (target is the collection with timeseries data):
+Now if you have a version of Couchbase which supports timeseries, **create this index** ("target" is the collection with timeseries data):
 ```
 CREATE INDEX index1 ON `target`(`device`, `ts_start`, `ts_end`)
 ```
 Populate Couchbase Server on docker with this:
 ```
-docker run marcobevilacqua94/iot_simulator:latest java -jar iot_simulator.jar -h 172.17.0.1 -mt 300
+docker run marcobevilacqua94/iot_simulator_sdk:latest java -jar iot_simulator_sdk.jar -h 172.17.0.1 -mt 300
 ```
 Now you can use the query engine to run this king of queries and produce charts in the UI (check the date ranges):
 

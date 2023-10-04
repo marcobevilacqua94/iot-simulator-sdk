@@ -4,21 +4,25 @@ import com.couchbase.client.java.json.JsonObject;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 
 
 public class SensorDocGenerator implements DocGenerator {
 
     private final Random rand = new Random();
-    public JsonObject generateDoc(long millis, Double lastValue, long sensor){
+    public JsonObject generateDoc(long millis, Double lastValue, long sensor, double temperature){
         return JsonObject.create()
-                .put("timestamp", millis)
-                .put("temperature", generateTemperature(lastValue))
-                .put("sensor", sensor);
+                .put("ts_start", millis)
+                .put("ts_end", millis)
+                .put("device", sensor)
+                .put("temperature", temperature)
+                .put("ts_data", List.of(Arrays.asList(millis, temperature)));
     }
 
 
-    double generateTemperature(Double lastValue){
+    public double generateTemperature(Double lastValue){
         double newValue;
         if(lastValue == null){
             return BigDecimal.valueOf(rand.nextDouble() * 40 - 10).setScale(3, RoundingMode.FLOOR).doubleValue();

@@ -1,13 +1,13 @@
 package org.iot_simulator;
 
+import com.couchbase.client.core.error.DocumentNotFoundException;
 import com.couchbase.client.java.*;
-import com.couchbase.client.java.json.JsonObject;
-import com.couchbase.client.java.kv.UpsertOptions;
 import org.apache.commons.cli.*;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import static com.couchbase.client.java.kv.MutateInSpec.arrayAppend;
 
 
 public class Main {
@@ -22,11 +22,11 @@ public class Main {
         String ip = "127.0.0.1";
         String bucketName = "sample";
         String scopeName = "_default";
-        String collectionName = "source";
+        String collectionName = "target";
         int sensors = 5;
         int insertsPerSecond = 5;
         int maxTime = 0;
-        int time_to_live = 60;
+        int millis_span = 60000;
 
 
         CommandLine commandLine;
@@ -37,10 +37,10 @@ public class Main {
         Option option_f = Option.builder("se").argName("sensors").hasArg().desc("number of sensors to simulate").build();
         Option option_s = Option.builder("s").argName("scope").hasArg().desc("couchbase scope").build();
         Option option_c = Option.builder("c").argName("collection").hasArg().desc("couchbase collection").build();
-        Option option_mt = Option.builder("mt").argName("max_seconds").hasArg().desc("max seconds to run").build();
-        Option option_ips = Option.builder("ips").argName("inserts_per_second").hasArg().desc("inserts per second for each sensor").build();
-        Option option_ttl = Option.builder("ttl").argName("time_to_live").hasArg().desc("time to live for the inserted documents").build();
-        
+        Option option_mt = Option.builder("mt").argName("max-seconds").hasArg().desc("max seconds to run").build();
+        Option option_ips = Option.builder("ips").argName("inserts-per-second").hasArg().desc("inserts per second for each sensor").build();
+        Option option_ms = Option.builder("ms").argName("millis-span").hasArg().desc("milliseconds covered by a timeseries document").build();
+
 
 
         Options options = new Options();
@@ -55,7 +55,7 @@ public class Main {
         options.addOption(option_f);
         options.addOption(option_mt);
         options.addOption(option_ips);
-        options.addOption(option_ttl);
+        options.addOption(option_ms);
 
         String header = "               [<arg1> [<arg2> [<arg3> ...\n       Options, flags and arguments may be in any order";
         HelpFormatter formatter = new HelpFormatter();
@@ -103,9 +103,9 @@ public class Main {
                 System.out.printf("inserts per second: %s%n", commandLine.getOptionValue("ips"));
                 insertsPerSecond = Integer.parseInt(commandLine.getOptionValue("ips"));
             }
-            if (commandLine.hasOption("ttl")) {
-                System.out.printf("time to live: %s%n", commandLine.getOptionValue("ttl"));
-                time_to_live = Integer.parseInt(commandLine.getOptionValue("ttl"));
+            if (commandLine.hasOption("ms")) {
+                System.out.printf("millis span: %s%n", commandLine.getOptionValue("ms"));
+                millis_span = Integer.parseInt(commandLine.getOptionValue("ms"));
             }
         } catch (ParseException exception) {
             System.out.print("Parse error: ");
@@ -127,20 +127,27 @@ public class Main {
             Map<Long, Double> lastValues = new Hashtable<>();
             Map<Long, Integer> sensorNames = new Hashtable<>();
             AtomicInteger counter = new AtomicInteger(0);
-            int finalTime_to_live = time_to_live;
+            int finalMillis_span = millis_span;
             Runnable insertScheduled = () -> {
                 long currentThread = Thread.currentThread().getId();
                 if(!sensorNames.containsKey(currentThread)){
                     sensorNames.put(currentThread, counter.getAndIncrement());
                 }
                 Double lastValue = lastValues.get(currentThread);
-                JsonObject doc = docGenerator.generateDoc(new Date().getTime(), lastValue, sensorNames.get(currentThread));
-                lastValues.put(currentThread, (Double) doc.get("temperature"));
-                collection.upsert(
-                        "SENSOR" + sensorNames.get(currentThread) + ":" + UUID.randomUUID(),
-                        doc,
-                        UpsertOptions.upsertOptions().expiry(Duration.ofSeconds(finalTime_to_live))
-                        ).block();
+                long millis = new Date().getTime();
+                String id = sensorNames.get(currentThread) + ":" + millis / finalMillis_span;
+                double temperature = docGenerator.generateTemperature(lastValue);
+                lastValues.put(currentThread, temperature);
+                try {
+                    collection.mutateIn(id,
+                            Collections.singletonList(arrayAppend("ts_data", List.of(Arrays.asList(millis, temperature))))).block();
+                } catch (DocumentNotFoundException ex){
+                    collection.upsert(
+                            id,
+                            docGenerator.generateDoc(millis, lastValue, sensorNames.get(currentThread), temperature)
+                    ).block();
+                }
+
             };
 
 

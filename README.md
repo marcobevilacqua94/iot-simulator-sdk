@@ -1,4 +1,4 @@
-# iot_simulator
+# iot_simulator_sdk
 This is a project to simulate the insertion of data points in Couchbase from a certain number of sensors with a configurable frequency.
 Data is prepared in the correct format directly by the sensors, which use subdocument api appending.
 

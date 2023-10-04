@@ -2,16 +2,16 @@
 This is a project to simulate the insertion of data points in Couchbase from a certain number of sensors with a configurable frequency.
 Data is prepared in the correct format directly by the sensors, which use subdocument api appending.
 
-use it with
+use it with:
 
 ```
 docker run marcobevilacqua94/iot_simulator_sdk:latest java -jar iot_simulator_sdk.jar -h (host) -u (username) -p (password) -b (bucket-name) -s (scope-name) -c (collection-name) -se (sensors) -mt (max-seconds) -ips (inserts-per-second) -ms (millis-span)
 ```
 
-inserts-per-second are referred to single sensor
-max-time is in seconds, after this time the program stops
+inserts-per-second are referred to single sensor.
+max-time is in seconds, after this time the program stops.
 
-default values for parameters are
+default values for parameters are:
 ```
 host: 127.0.0.1
 username: Administrator
@@ -24,7 +24,7 @@ max-time: 0 (infinte)
 inserts-per-second: 5
 millis-span: 60000
 ```
-To run Couchbase Server 7.2.0 run this 
+To run Couchbase Server 7.2.0 run this:
 ```
 docker run -d --name db1 -p 8091-8096:8091-8096 -p 11210-11211:11210-11211 couchbase:7.2.0
 ```

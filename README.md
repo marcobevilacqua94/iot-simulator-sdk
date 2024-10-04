@@ -18,7 +18,7 @@ username: Administrator
 password: password
 bucker-name: sample
 scope-name: _default
-collection-name: source
+collection-name: _default
 sensors: 5
 max-time: 0 (infinte)
 inserts-per-second: 5

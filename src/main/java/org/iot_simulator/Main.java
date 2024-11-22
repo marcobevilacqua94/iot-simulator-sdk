@@ -38,7 +38,7 @@ public class Main {
         Option option_u = Option.builder("u").argName("username").hasArg().desc("couchbase username").build();
         Option option_p = Option.builder("p").argName("password").hasArg().desc("couchbase password").build();
         Option option_b = Option.builder("b").argName("bucket").hasArg().desc("couchbase bucket").build();
-        Option option_f = Option.builder("se").argName("sensors").hasArg().desc("number of sensors to simulate").build();
+        Option option_se = Option.builder("se").argName("sensors").hasArg().desc("number of sensors to simulate").build();
         Option option_s = Option.builder("s").argName("scope").hasArg().desc("couchbase scope").build();
         Option option_c = Option.builder("c").argName("collection").hasArg().desc("couchbase collection").build();
         Option option_mt = Option.builder("mt").argName("max-seconds").hasArg().desc("max seconds to run").build();
@@ -56,7 +56,7 @@ public class Main {
         options.addOption(option_b);
         options.addOption(option_c);
         options.addOption(option_s);
-        options.addOption(option_f);
+        options.addOption(option_se);
         options.addOption(option_mt);
         options.addOption(option_ips);
         options.addOption(option_ms);
@@ -107,6 +107,10 @@ public class Main {
                 System.out.printf("inserts per second: %s%n", commandLine.getOptionValue("ips"));
                 insertsPerSecond = Integer.parseInt(commandLine.getOptionValue("ips"));
             }
+            if (commandLine.hasOption("se")) {
+                System.out.printf("sensors: %s%n", commandLine.getOptionValue("se"));
+                sensors = Integer.parseInt(commandLine.getOptionValue("se"));
+            }
             if (commandLine.hasOption("ms")) {
                 System.out.printf("millis span: %s%n", commandLine.getOptionValue("ms"));
                 millis_span = Integer.parseInt(commandLine.getOptionValue("ms"));
@@ -129,81 +133,51 @@ public class Main {
             ReactiveBucket bucket = cluster.bucket(bucketName).reactive();
             ReactiveScope scope = bucket.scope(scopeName);
             ReactiveCollection collection = scope.collection(collectionName);
-            Map<Long, Double> lastValues = new Hashtable<>();
-            Map<Long, Integer> sensorNames = new Hashtable<>();
-            AtomicInteger counter = new AtomicInteger(0);
+            Runnable insertScheduled = getRunnable(millis_span, docGenerator, collection);
 
 
-            Runnable insertScheduled = () -> {
-                long startingTimestamp = 1682899200000L;
-                long finalIntervals = 6307200;
-                AtomicLong lastInterval = new AtomicLong();
-
-                int buffer = 100;
-                Flux.generate(() -> 0L, (i, sink) ->
-                        {
-                            sink.next(i);
-                            if (i > finalIntervals) {
-                                sink.complete();
-                            }
-                            return i + 1;
-                        })
-                        .buffer(buffer)
-                        .map(countList -> Flux.fromIterable(countList)
-                                .map(count ->
-
-                                        {
-                                            long currentThread = Thread.currentThread().getId();
-                                            if(!sensorNames.containsKey(currentThread)){
-                                                sensorNames.put(currentThread, counter.getAndIncrement());
-                                            }
-                                            Double lastValue = lastValues.get(currentThread);
-                                            long millis = startingTimestamp + (lastInterval.get() * 5000);
-                                            lastInterval.addAndGet(1);
-                                            String id = sensorNames.get(currentThread) + ":" + millis / 3600000;
-                                            double temperature = docGenerator.generateTemperature(lastValue);
-                                            lastValues.put(currentThread, temperature);
-                                            try {
-                                                return
-                                                        collection.mutateIn(id,
-                                                                Collections.singletonList(arrayAppend("ts_data", List.of(Arrays.asList(millis, temperature))))).block();
-                                            } catch (DocumentNotFoundException ex){
-                                                return collection.upsert(
-                                                        id,
-                                                        docGenerator.generateDoc(millis, lastValue, sensorNames.get(currentThread), temperature)
-                                                ).block();
-                                            }
-
-                                        }
-                                )
-                                .retry()
-                                .collectList()
-                                .block()
-                        )
-                        .retry()
-                        .collectList()
-                        .block();
-
-            };
-
-
-            ExecutorService ses = Executors.newFixedThreadPool(sensors);
+            ScheduledExecutorService ses = Executors.newScheduledThreadPool(sensors);
             for(int i = 0; i < sensors; i++) {
-                ses.execute(insertScheduled);
+                ses.scheduleAtFixedRate(insertScheduled, 0, 1000/insertsPerSecond, TimeUnit.MILLISECONDS);
             }
 
             boolean error = ses.awaitTermination(maxTime == 0 ? Integer.MAX_VALUE : maxTime, TimeUnit.SECONDS);
             ses.shutdown();
             System.out.println(error ? "finished without errors" : "finished with errors");
 
-
-
-
-
-
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private static Runnable getRunnable(int millis_span, DocGenerator docGenerator, ReactiveCollection collection) {
+        Map<Long, Double> lastValues = new Hashtable<>();
+        Map<Long, Integer> sensorNames = new Hashtable<>();
+        AtomicInteger counter = new AtomicInteger(0);
+
+
+        return () -> {
+
+            long currentThread = Thread.currentThread().getId();
+            if(!sensorNames.containsKey(currentThread)){
+                sensorNames.put(currentThread, counter.getAndIncrement());
+            }
+            Double lastValue = lastValues.get(currentThread);
+            long millis = System.currentTimeMillis();
+
+            String id = "sensor_" + sensorNames.get(currentThread) + ":window_" + millis / millis_span;
+            double temperature = docGenerator.generateTemperature(lastValue);
+            lastValues.put(currentThread, temperature);
+            try {
+                        collection.mutateIn(id,
+                                Collections.singletonList(arrayAppend("ts_data", List.of(Arrays.asList(millis, temperature))))).block();
+            } catch (DocumentNotFoundException ex){
+                collection.upsert(
+                        id,
+                        docGenerator.generateDoc(millis, lastValue, sensorNames.get(currentThread), temperature)
+                ).block();
+            }
+        };
     }
 
 }

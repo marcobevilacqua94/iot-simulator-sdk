@@ -17,7 +17,6 @@ public class SensorDocGenerator implements DocGenerator {
                 .put("ts_start", millis)
                 .put("ts_end", millis)
                 .put("device", sensor)
-                .put("temperature", temperature)
                 .put("ts_data", List.of(Arrays.asList(millis, temperature)));
     }
 

@@ -28,8 +28,8 @@ To run Couchbase Server 7.2.0 run this:
 ```
 docker run -d --name db1 -p 8091-8096:8091-8096 -p 11210-11211:11210-11211 couchbase:7.2.0
 ```
-Create "sample" bucket, create required collection, collection "target".
-The sensors write in "target".
+Create bucket, scope and collection.
+
 The sensors aggregate data from the same sensor in the same millis_span seconds window.
 
 Now if you have a version of Couchbase which supports timeseries, **create this index** ("target" is the collection with timeseries data):

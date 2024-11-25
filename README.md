@@ -16,7 +16,7 @@ default values for parameters are:
 host: 127.0.0.1
 username: Administrator
 password: password
-bucker-name: sample
+bucket-name: sample
 scope-name: _default
 collection-name: _default
 sensors: 5
